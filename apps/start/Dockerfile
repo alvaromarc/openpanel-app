@@ -105,6 +105,7 @@ FROM base AS runner
 
 ENV NODE_ENV=production
 ENV npm_config_build_from_source=true
+ENV PORT=3000
 
 WORKDIR /app
 

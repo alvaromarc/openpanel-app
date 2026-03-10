@@ -85,6 +85,7 @@ FROM base AS runner
 
 ENV NODE_ENV=production
 ENV npm_config_build_from_source=true
+ENV PORT=3001
 
 WORKDIR /app
 
@@ -115,6 +116,6 @@ RUN pnpm db:codegen
 
 WORKDIR /app/apps/api
 
-EXPOSE 3000
+EXPOSE 3001
 
-CMD ["pnpm", "start"]
+CMD ["node", "dist/index.js"]

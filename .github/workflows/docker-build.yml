@@ -29,8 +29,12 @@ on:
       - "**/.eslintignore"
       - "**/.prettierignore"
 
+permissions:
+  contents: read
+  packages: write
+
 env:
-  repo_owner: "openpanel-dev"
+  repo_owner: "alvaromarc"
 
 jobs:
   lint-and-test:
@@ -75,6 +79,8 @@ jobs:
       - name: Codegen
         run: pnpm codegen
 
+      # Dejamos el quality gate simple por ahora.
+      # Si más adelante quieres endurecerlo, puedes reactivar estos pasos.
       # - name: Run Biome
       #   run: pnpm lint
 
@@ -85,22 +91,17 @@ jobs:
       #   run: pnpm test
 
   build-and-push-api:
-    permissions:
-      packages: write
-      contents: write
     needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate tags
+      - name: Generate image tags
         id: tags
         run: |
-          # Sanitize branch name by replacing / with -
           BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-          # Get first 4 characters of commit SHA
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-4)
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
@@ -114,7 +115,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -123,44 +124,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ghcr.io/${{ env.repo_owner }}/api:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
+            ghcr.io/${{ env.repo_owner }}/openpanel-api:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
+            ghcr.io/${{ env.repo_owner }}/openpanel-api:latest
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
-      - name: Create/Update API tag
-        if: github.ref == 'refs/heads/main'
-        run: |
-          # Delete existing tag if it exists
-          if git tag -l "api" | grep -q "api"; then
-            git tag -d "api"
-            echo "Deleted local tag: api"
-          fi
-
-          # Create new tag
-          git tag "api" "${{ github.sha }}"
-          echo "Created tag: api"
-
-          # Push tag to remote
-          git push origin "api" --force
-          echo "Pushed tag: api"
-
   build-and-push-worker:
-    permissions:
-      packages: write
-      contents: write
     needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate tags
+      - name: Generate image tags
         id: tags
         run: |
-          # Sanitize branch name by replacing / with -
           BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-          # Get first 4 characters of commit SHA
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-4)
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
@@ -174,7 +154,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Worker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -183,44 +163,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ghcr.io/${{ env.repo_owner }}/worker:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
+            ghcr.io/${{ env.repo_owner }}/openpanel-worker:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
+            ghcr.io/${{ env.repo_owner }}/openpanel-worker:latest
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
-      - name: Create/Update Worker tag
-        if: github.ref == 'refs/heads/main'
-        run: |
-          # Delete existing tag if it exists
-          if git tag -l "worker" | grep -q "worker"; then
-            git tag -d "worker"
-            echo "Deleted local tag: worker"
-          fi
-
-          # Create new tag
-          git tag "worker" "${{ github.sha }}"
-          echo "Created tag: worker"
-
-          # Push tag to remote
-          git push origin "worker" --force
-          echo "Pushed tag: worker"
-
   build-and-push-dashboard:
-    permissions:
-      packages: write
-      contents: write
     needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate tags
+      - name: Generate image tags
         id: tags
         run: |
-          # Sanitize branch name by replacing / with -
           BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-          # Get first 4 characters of commit SHA
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-4)
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
@@ -234,7 +193,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Dashboard image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -243,23 +202,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ghcr.io/${{ env.repo_owner }}/dashboard:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
+            ghcr.io/${{ env.repo_owner }}/openpanel-dashboard:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
+            ghcr.io/${{ env.repo_owner }}/openpanel-dashboard:latest
           build-args: |
             NO_CLOUDFLARE=1
-
-      - name: Create/Update Dashboard tag
-        if: github.ref == 'refs/heads/main'
-        run: |
-          # Delete existing tag if it exists
-          if git tag -l "dashboard" | grep -q "dashboard"; then
-            git tag -d "dashboard"
-            echo "Deleted local tag: dashboard"
-          fi
-
-          # Create new tag
-          git tag "dashboard" "${{ github.sha }}"
-          echo "Created tag: dashboard"
-
-          # Push tag to remote
-          git push origin "dashboard" --force
-          echo "Pushed tag: dashboard"
