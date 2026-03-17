@@ -300,6 +300,7 @@ jobs:
           repository: ${{ env.REPO_B_REPOSITORY }}
           token: ${{ secrets.REPO_B_TOKEN }}
           path: repo-b
+          fetch-depth: 0
 
       - name: Install yq
         shell: bash
@@ -318,55 +319,26 @@ jobs:
           yq -i '.images.worker.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
           git diff -- "${{ env.REPO_B_VALUES_FILE }}"
 
-      - name: Commit and push branch
+      - name: Commit and push to main
         id: commit-push
         shell: bash
         run: |
           cd repo-b
-          BRANCH="chore/update-openpanel-${{ steps.tag.outputs.deploy_tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git fetch origin "${BRANCH}" || true
-          git checkout -B "${BRANCH}"
+          git checkout main
+          git pull --ff-only origin main
 
           git add "${{ env.REPO_B_VALUES_FILE }}"
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
-            echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           git commit -m "chore: update OpenPanel images to ${{ steps.tag.outputs.deploy_tag }}"
-          git push --force-with-lease origin "${BRANCH}"
+          git push origin main
 
-          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           echo "changed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Create or update Pull Request
-        if: ${{ steps.commit-push.outputs.changed == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.REPO_B_TOKEN }}
-        shell: bash
-        run: |
-          cd repo-b
-          BRANCH="${{ steps.commit-push.outputs.branch }}"
-
-          EXISTING_PR="$(gh pr list \
-            --repo "${{ env.REPO_B_REPOSITORY }}" \
-            --head "${BRANCH}" \
-            --json number \
-            --jq '.[0].number')"
-
-          if [[ -n "${EXISTING_PR}" && "${EXISTING_PR}" != "null" ]]; then
-            echo "PR already exists: #${EXISTING_PR}"
-          else
-            gh pr create \
-              --repo "${{ env.REPO_B_REPOSITORY }}" \
-              --title "chore: update OpenPanel images to ${{ steps.tag.outputs.deploy_tag }}" \
-              --body "Automated image update from Repo A." \
-              --base main \
-              --head "${BRANCH}"
-          fi
