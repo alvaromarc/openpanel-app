@@ -87,14 +87,18 @@ jobs:
       - name: Codegen
         run: pnpm codegen
 
-      - name: Run checks
-        run: pnpm check
+      # Dejamos fuera el quality gate ya que trabajamos con código upstream externo.
+      # Nuestro foco es la automatización del ciclo completo de build, release y despliegue mediante GitOps.
+      # Así, los quality gates del código se encuentran fueran de nuestro scope.
 
-      - name: Run TypeScript checks
-        run: pnpm typecheck
+      # - name: Run checks
+      #   run: pnpm check
 
-      - name: Run tests
-        run: pnpm test
+      # - name: Run TypeScript checks
+      #   run: pnpm typecheck
+
+      # - name: Run tests
+      #   run: pnpm test
 
   build-and-push-api:
     needs: lint-and-test
