@@ -87,8 +87,8 @@ jobs:
       - name: Codegen
         run: pnpm codegen
 
-      - name: Run Biome
-        run: pnpm lint
+      - name: Run checks
+        run: pnpm check
 
       - name: Run TypeScript checks
         run: pnpm typecheck
