@@ -42,8 +42,7 @@ permissions:
 env:
   IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
   REPO_B_REPOSITORY: ${{ vars.REPO_B_REPOSITORY }}
-  # archivo interno al proyecto
-  REPO_B_VALUES_FILE: clusters/local/values/openpanel.values.yaml
+  REPO_B_VALUES_FILE: clusters/local/values/openpanel.values.yaml # archivo interno al proyecto
 
 jobs:
   lint-and-test:
@@ -276,7 +275,7 @@ jobs:
       - build-and-push-worker
       - build-and-push-dashboard
     runs-on: ubuntu-latest
-    if: ${{ env.REPO_B_REPOSITORY != '' && env.REPO_B_VALUES_FILE != '' }}
+    if: ${{ vars.REPO_B_REPOSITORY != '' }}
     steps:
       - name: Resolve deploy tag
         id: tag
