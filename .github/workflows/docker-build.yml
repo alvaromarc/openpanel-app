@@ -2,7 +2,7 @@ name: Docker Build and Push
 
 on:
   workflow_dispatch:
-  
+
   push:
     branches:
       - main
@@ -35,11 +35,14 @@ on:
       - "**/.prettierignore"
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+  pull-requests: write
 
 env:
-  repo_owner: "alvaromarc"
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+  REPO_B_REPOSITORY: ${{ vars.REPO_B_REPOSITORY }}
+  REPO_B_VALUES_FILE: clusters/local/values/openpanel.values.yaml # archivo interno al proyecto
 
 jobs:
   lint-and-test:
@@ -84,23 +87,36 @@ jobs:
       - name: Codegen
         run: pnpm codegen
 
-      # Dejamos el quality gate simple por ahora.
-      # Si más adelante quieres endurecerlo, puedes reactivar estos pasos.
-      # - name: Run Biome
-      #   run: pnpm lint
+      - name: Run Biome
+        run: pnpm lint
 
-      # - name: Run TypeScript checks
-      #   run: pnpm typecheck
+      - name: Run TypeScript checks
+        run: pnpm typecheck
 
-      # - name: Run tests
-      #   run: pnpm test
+      - name: Run tests
+        run: pnpm test
 
   build-and-push-api:
     needs: lint-and-test
     runs-on: ubuntu-latest
+    outputs:
+      deploy_tag: ${{ steps.deploy-tag.outputs.deploy_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Resolve deploy tag
+        id: deploy-tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            DEPLOY_TAG="${GITHUB_REF_NAME}"
+          else
+            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+            DEPLOY_TAG="sha-${SHORT_SHA}"
+          fi
+          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Using deploy tag: ${DEPLOY_TAG}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -108,7 +124,7 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,7 +132,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ env.repo_owner }}/openpanel-api
+          images: ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
@@ -132,7 +148,9 @@ jobs:
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api:${{ steps.deploy-tag.outputs.deploy_tag }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
@@ -144,13 +162,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Resolve deploy tag
+        id: deploy-tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            DEPLOY_TAG="${GITHUB_REF_NAME}"
+          else
+            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+            DEPLOY_TAG="sha-${SHORT_SHA}"
+          fi
+          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Using deploy tag: ${DEPLOY_TAG}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -158,7 +189,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ env.repo_owner }}/openpanel-worker
+          images: ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
@@ -174,7 +205,9 @@ jobs:
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker:${{ steps.deploy-tag.outputs.deploy_tag }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
@@ -186,13 +219,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Resolve deploy tag
+        id: deploy-tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            DEPLOY_TAG="${GITHUB_REF_NAME}"
+          else
+            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+            DEPLOY_TAG="sha-${SHORT_SHA}"
+          fi
+          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Using deploy tag: ${DEPLOY_TAG}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -200,7 +246,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ env.repo_owner }}/openpanel-dashboard
+          images: ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
@@ -216,7 +262,106 @@ jobs:
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard:${{ steps.deploy-tag.outputs.deploy_tag }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NO_CLOUDFLARE=1
+
+  promote-repo-b:
+    needs:
+      - build-and-push-api
+      - build-and-push-worker
+      - build-and-push-dashboard
+    runs-on: ubuntu-latest
+    if: ${{ env.REPO_B_REPOSITORY != '' && env.REPO_B_VALUES_FILE != '' }}
+    steps:
+      - name: Resolve deploy tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            DEPLOY_TAG="${GITHUB_REF_NAME}"
+          else
+            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+            DEPLOY_TAG="sha-${SHORT_SHA}"
+          fi
+          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Using deploy tag: ${DEPLOY_TAG}"
+
+      - name: Checkout Repo B
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPO_B_REPOSITORY }}
+          token: ${{ secrets.REPO_B_TOKEN }}
+          path: repo-b
+
+      - name: Install yq
+        shell: bash
+        run: |
+          sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Update image tags in Repo B
+        shell: bash
+        run: |
+          cd repo-b
+          TAG="${{ steps.tag.outputs.deploy_tag }}"
+          yq -i '.images.api.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
+          yq -i '.images.dashboard.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
+          yq -i '.images.worker.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
+          git diff -- "${{ env.REPO_B_VALUES_FILE }}"
+
+      - name: Commit and push branch
+        id: commit-push
+        shell: bash
+        run: |
+          cd repo-b
+          BRANCH="chore/update-openpanel-${{ steps.tag.outputs.deploy_tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${BRANCH}"
+
+          git add "${{ env.REPO_B_VALUES_FILE }}"
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git commit -m "chore: update OpenPanel images to ${{ steps.tag.outputs.deploy_tag }}"
+          git push --force-with-lease origin "${BRANCH}"
+
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update Pull Request
+        if: ${{ steps.commit-push.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.REPO_B_TOKEN }}
+        shell: bash
+        run: |
+          cd repo-b
+          BRANCH="${{ steps.commit-push.outputs.branch }}"
+
+          EXISTING_PR="$(gh pr list \
+            --repo "${{ env.REPO_B_REPOSITORY }}" \
+            --head "${BRANCH}" \
+            --json number \
+            --jq '.[0].number')"
+
+          if [[ -n "${EXISTING_PR}" && "${EXISTING_PR}" != "null" ]]; then
+            echo "PR already exists: #${EXISTING_PR}"
+          else
+            gh pr create \
+              --repo "${{ env.REPO_B_REPOSITORY }}" \
+              --title "chore: update OpenPanel images to ${{ steps.tag.outputs.deploy_tag }}" \
+              --body "Automated image update from Repo A." \
+              --base main \
+              --head "${BRANCH}"
+          fi
