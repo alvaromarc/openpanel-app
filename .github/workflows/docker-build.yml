@@ -314,9 +314,9 @@ jobs:
         run: |
           cd repo-b
           TAG="${{ steps.tag.outputs.deploy_tag }}"
-          yq -i '.images.api.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
-          yq -i '.images.dashboard.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
-          yq -i '.images.worker.tag = strenv(TAG)' "${{ env.REPO_B_VALUES_FILE }}"
+          yq -i ".images.api.tag = \"${TAG}\"" "${{ env.REPO_B_VALUES_FILE }}"
+          yq -i ".images.dashboard.tag = \"${TAG}\"" "${{ env.REPO_B_VALUES_FILE }}"
+          yq -i ".images.worker.tag = \"${TAG}\"" "${{ env.REPO_B_VALUES_FILE }}"
           git diff -- "${{ env.REPO_B_VALUES_FILE }}"
 
       - name: Commit and push to main
