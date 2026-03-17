@@ -42,7 +42,8 @@ permissions:
 env:
   IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
   REPO_B_REPOSITORY: ${{ vars.REPO_B_REPOSITORY }}
-  REPO_B_VALUES_FILE: clusters/local/values/openpanel.values.yaml # archivo interno al proyecto
+  # archivo interno al proyecto
+  REPO_B_VALUES_FILE: clusters/local/values/openpanel.values.yaml
 
 jobs:
   lint-and-test:
