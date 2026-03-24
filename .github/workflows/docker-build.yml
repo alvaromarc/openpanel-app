@@ -7,7 +7,7 @@ on:
     branches:
       - main
     tags:
-      - "v*"
+      - "v*.*.*"
     paths-ignore:
       # README and docs
       - "**/README*"
@@ -38,6 +38,10 @@ permissions:
   contents: write
   packages: write
   pull-requests: write
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
@@ -100,27 +104,48 @@ jobs:
       # - name: Run tests
       #   run: pnpm test
 
-  build-and-push-api:
-    needs: lint-and-test
+  resolve-version:
     runs-on: ubuntu-latest
     outputs:
-      deploy_tag: ${{ steps.deploy-tag.outputs.deploy_tag }}
+      semver: ${{ steps.version.outputs.semver }}
+      is_release: ${{ steps.version.outputs.is_release }}
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Resolve deploy tag
-        id: deploy-tag
+      - name: Resolve semantic version
+        id: version
         shell: bash
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            DEPLOY_TAG="${GITHUB_REF_NAME}"
-          else
-            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-            DEPLOY_TAG="sha-${SHORT_SHA}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "Not a tag push: semver publication and GitOps promotion are skipped."
+            exit 0
           fi
-          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Using deploy tag: ${DEPLOY_TAG}"
+
+          RAW_TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$RAW_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Expected a SemVer tag in the form vMAJOR.MINOR.PATCH, got: $RAW_TAG"
+            exit 1
+          fi
+
+          VERSION="${RAW_TAG#v}"
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+
+          echo "is_release=true" >> "$GITHUB_OUTPUT"
+          echo "semver=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: ${VERSION}"
+
+  build-and-push-api:
+    needs:
+      - lint-and-test
+      - resolve-version
+    if: ${{ needs.resolve-version.outputs.is_release == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -131,18 +156,6 @@ jobs:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
 
       - name: Build and push API image
         uses: docker/build-push-action@v6
@@ -153,31 +166,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api:${{ steps.deploy-tag.outputs.deploy_tag }}
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api:${{ needs.resolve-version.outputs.semver }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api:${{ needs.resolve-version.outputs.major }}.${{ needs.resolve-version.outputs.minor }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-api:${{ needs.resolve-version.outputs.major }}
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
   build-and-push-worker:
-    needs: lint-and-test
+    needs:
+      - lint-and-test
+      - resolve-version
+    if: ${{ needs.resolve-version.outputs.is_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Resolve deploy tag
-        id: deploy-tag
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            DEPLOY_TAG="${GITHUB_REF_NAME}"
-          else
-            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-            DEPLOY_TAG="sha-${SHORT_SHA}"
-          fi
-          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Using deploy tag: ${DEPLOY_TAG}"
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -188,18 +190,6 @@ jobs:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
 
       - name: Build and push Worker image
         uses: docker/build-push-action@v6
@@ -210,31 +200,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker:${{ steps.deploy-tag.outputs.deploy_tag }}
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker:${{ needs.resolve-version.outputs.semver }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker:${{ needs.resolve-version.outputs.major }}.${{ needs.resolve-version.outputs.minor }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-worker:${{ needs.resolve-version.outputs.major }}
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
   build-and-push-dashboard:
-    needs: lint-and-test
+    needs:
+      - lint-and-test
+      - resolve-version
+    if: ${{ needs.resolve-version.outputs.is_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Resolve deploy tag
-        id: deploy-tag
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            DEPLOY_TAG="${GITHUB_REF_NAME}"
-          else
-            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-            DEPLOY_TAG="sha-${SHORT_SHA}"
-          fi
-          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Using deploy tag: ${DEPLOY_TAG}"
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -246,18 +225,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-
       - name: Build and push Dashboard image
         uses: docker/build-push-action@v6
         with:
@@ -267,39 +234,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard:${{ steps.deploy-tag.outputs.deploy_tag }}
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard:${{ needs.resolve-version.outputs.semver }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard:${{ needs.resolve-version.outputs.major }}.${{ needs.resolve-version.outputs.minor }}
+            ${{ env.IMAGE_REGISTRY }}/${{ github.repository_owner }}/openpanel-dashboard:${{ needs.resolve-version.outputs.major }}
           build-args: |
             NO_CLOUDFLARE=1
 
   promote-repo-b:
     needs:
+      - resolve-version
       - build-and-push-api
       - build-and-push-worker
       - build-and-push-dashboard
+    if: ${{ needs.resolve-version.outputs.is_release == 'true' && vars.REPO_B_REPOSITORY != '' }}
     runs-on: ubuntu-latest
-    if: ${{ vars.REPO_B_REPOSITORY != '' }}
     steps:
-      - name: Resolve deploy tag
-        id: tag
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            DEPLOY_TAG="${GITHUB_REF_NAME}"
-          else
-            SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-            DEPLOY_TAG="sha-${SHORT_SHA}"
-          fi
-          echo "deploy_tag=${DEPLOY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Using deploy tag: ${DEPLOY_TAG}"
-
       - name: Checkout Repo B
         uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO_B_REPOSITORY }}
           token: ${{ secrets.REPO_B_TOKEN }}
-          path: repo-b
           fetch-depth: 0
 
       - name: Install yq
@@ -312,33 +266,34 @@ jobs:
       - name: Update image tags in Repo B
         shell: bash
         run: |
-          cd repo-b
-          TAG="${{ steps.tag.outputs.deploy_tag }}"
+          TAG="${{ needs.resolve-version.outputs.semver }}"
           yq -i ".images.api.tag = \"${TAG}\"" "${{ env.REPO_B_VALUES_FILE }}"
           yq -i ".images.dashboard.tag = \"${TAG}\"" "${{ env.REPO_B_VALUES_FILE }}"
           yq -i ".images.worker.tag = \"${TAG}\"" "${{ env.REPO_B_VALUES_FILE }}"
           git diff -- "${{ env.REPO_B_VALUES_FILE }}"
 
-      - name: Commit and push to main
-        id: commit-push
-        shell: bash
-        run: |
-          cd repo-b
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Create Pull Request in Repo B
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.REPO_B_TOKEN }}
+          commit-message: "chore: promote OpenPanel ${{ needs.resolve-version.outputs.semver }}"
+          branch: "chore/promote-openpanel-${{ needs.resolve-version.outputs.semver }}"
+          delete-branch: true
+          title: "chore: promote OpenPanel ${{ needs.resolve-version.outputs.semver }}"
+          body: |
+            ## Resumen
 
-          git checkout main
-          git pull --ff-only origin main
+            Este PR actualiza los tags de imagen de OpenPanel en el repositorio GitOps con la nueva release SemVer `${{ needs.resolve-version.outputs.semver }}`.
 
-          git add "${{ env.REPO_B_VALUES_FILE }}"
+            ## Cambios
 
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+            - API → `${{ needs.resolve-version.outputs.semver }}`
+            - Dashboard → `${{ needs.resolve-version.outputs.semver }}`
+            - Worker → `${{ needs.resolve-version.outputs.semver }}`
 
-          git commit -m "chore: update OpenPanel images to ${{ steps.tag.outputs.deploy_tag }}"
-          git push origin main
+            ## Origen
 
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+            PR generado automáticamente desde Repo A tras publicar imágenes versionadas en GHCR.
+          base: main
+          add-paths: |
+            ${{ env.REPO_B_VALUES_FILE }}
