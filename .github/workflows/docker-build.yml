@@ -1,3 +1,57 @@
+# ============================================================
+# CONFIGURACIÓN REQUERIDA EN GITHUB (Settings -> Secrets and variables -> Actions)
+# ============================================================
+#
+# Este workflow separa:
+# - CI normal en push a `main`
+# - release/promotion solo cuando se publica un tag SemVer `vMAJOR.MINOR.PATCH`
+#
+# Comportamiento:
+# - Push normal a `main`:
+#     ejecuta lint/test y resuelve versión,
+#     pero no publica imágenes versionadas ni promociona a Repo B.
+#
+# - Push de tag SemVer (ej. `v1.0.0`):
+#     publica imágenes en GHCR con tags:
+#       - 1.0.0
+#       - 1.0
+#       - 1
+#     y crea un Pull Request automático en Repo B para actualizar los values GitOps.
+#
+# ------------------------------------------------------------
+# VARIABLES DE GITHUB NECESARIAS
+# ------------------------------------------------------------
+#
+# IMAGE_REGISTRY
+#   Registry donde se publican las imágenes Docker.
+#   En este proyecto normalmente:
+#     ghcr.io
+#
+# REPO_B_REPOSITORY
+#   Repositorio GitOps destino al que se enviará el PR de promoción.
+#   Formato:
+#     <owner>/<repo>
+#   Ejemplo:
+#     alvaromarc/openpanel-gitops
+#
+# ------------------------------------------------------------
+# SECRETS DE GITHUB NECESARIOS
+# ------------------------------------------------------------
+#
+# REPO_B_TOKEN
+#   Personal Access Token con permisos de escritura sobre Repo B.
+#   Se usa para:
+#   - clonar Repo B
+#   - modificar el archivo de values
+#   - crear automáticamente el Pull Request de promoción
+#
+# GITHUB_TOKEN
+#   Secret automático proporcionado por GitHub Actions.
+#   No hay que crearlo manualmente.
+#   Se usa aquí para autenticarse contra GHCR y publicar las imágenes.
+#
+# ============================================================
+
 name: Docker Build and Push
 
 on:
@@ -105,6 +159,11 @@ jobs:
       #   run: pnpm test
 
   resolve-version:
+
+  # Este job decide si el workflow está en modo "CI normal" o "release".
+  # Solo los tags con formato vMAJOR.MINOR.PATCH activan publicación en GHCR
+  # y promoción automática hacia Repo B.
+
     runs-on: ubuntu-latest
     outputs:
       semver: ${{ steps.version.outputs.semver }}
@@ -139,6 +198,10 @@ jobs:
           echo "Resolved release version: ${VERSION}"
 
   build-and-push-api:
+
+    # Estos jobs solo se ejecutan en releases SemVer.
+    # En pushes normales a main no se publican imágenes versionadas.
+
     needs:
       - lint-and-test
       - resolve-version
@@ -241,6 +304,11 @@ jobs:
             NO_CLOUDFLARE=1
 
   promote-repo-b:
+
+    # La promoción GitOps solo ocurre en releases SemVer
+    # y únicamente si REPO_B_REPOSITORY está configurado.
+    # El cambio en Repo B se realiza mediante Pull Request.
+
     needs:
       - resolve-version
       - build-and-push-api

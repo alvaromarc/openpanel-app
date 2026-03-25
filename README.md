@@ -1,3 +1,13 @@
+## Configuración del pipeline
+
+El pipeline de CI requiere configurar ciertos secrets y variables en GitHub.
+
+Ver comentarios en:
+.github/workflows/<workflow>.yaml
+
+---
+
+
 ![hero](apps/public/public/ogimage.png)
 
 <p align="center">
