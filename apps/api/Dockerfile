@@ -22,10 +22,9 @@ ENV PATH="$PNPM_HOME:$PATH"
 
 # Crear usuario no root y cambiar ownership
 RUN groupadd -r app && useradd -r app -g app
+WORKDIR /app
 RUN chown -R app:app /app
 USER app
-
-WORKDIR /app
 
 # Workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
