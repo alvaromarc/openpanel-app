@@ -21,7 +21,7 @@ RUN corepack enable && \
     rm -rf /var/lib/apt/lists/*
 
 # Crear usuario no root y cambiar ownership
-RUN addgroup -S app && adduser -S app -G app
+RUN groupadd -r app && useradd -r app -g app
 RUN chown -R app:app /app
 USER app
 
