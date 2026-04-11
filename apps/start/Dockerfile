@@ -19,11 +19,7 @@ ENV SELF_HOSTED=1
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-# Crear usuario no root y cambiar ownership
-RUN groupadd -r app && useradd -r app -g app
 WORKDIR /app
-RUN chown -R app:app /app
-USER app
 
 # Workspace - Copy package.json files for caching
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -111,36 +107,42 @@ ENV NODE_ENV=production
 ENV npm_config_build_from_source=true
 ENV PORT=3000
 
+# Create non-privileged user
+RUN groupadd -r app && useradd -r -g app app
+
 WORKDIR /app
 
 # Copy workspace files
-COPY --from=build /app/package.json ./
-COPY --from=build /app/pnpm-workspace.yaml ./
+COPY --from=build --chown=app:app /app/package.json ./
+COPY --from=build --chown=app:app /app/pnpm-workspace.yaml ./
 
 # Copy production node_modules
-COPY --from=prod /app/node_modules ./node_modules
+COPY --from=prod --chown=app:app /app/node_modules ./node_modules
 
 # Copy built app with .output directory
-COPY --from=build /app/apps/start/.output ./apps/start/.output
-COPY --from=build /app/apps/start/dist ./apps/start/dist
-COPY --from=build /app/apps/start/package.json ./apps/start/
+COPY --from=build --chown=app:app /app/apps/start/.output ./apps/start/.output
+COPY --from=build --chown=app:app /app/apps/start/dist ./apps/start/dist
+COPY --from=build --chown=app:app /app/apps/start/package.json ./apps/start/
 
 # Copy necessary packages
-COPY --from=build /app/packages/db ./packages/db
-COPY --from=build /app/packages/trpc ./packages/trpc
-COPY --from=build /app/packages/auth ./packages/auth
-COPY --from=build /app/packages/json ./packages/json
-COPY --from=build /app/packages/common ./packages/common
-COPY --from=build /app/packages/payments ./packages/payments
-COPY --from=build /app/packages/constants ./packages/constants
-COPY --from=build /app/packages/validation ./packages/validation
-COPY --from=build /app/packages/integrations ./packages/integrations
-COPY --from=build /app/packages/sdks/_info ./packages/sdks/_info
-COPY --from=build /app/tooling/typescript ./tooling/typescript
+COPY --from=build --chown=app:app /app/packages/db ./packages/db
+COPY --from=build --chown=app:app /app/packages/trpc ./packages/trpc
+COPY --from=build --chown=app:app /app/packages/auth ./packages/auth
+COPY --from=build --chown=app:app /app/packages/json ./packages/json
+COPY --from=build --chown=app:app /app/packages/common ./packages/common
+COPY --from=build --chown=app:app /app/packages/payments ./packages/payments
+COPY --from=build --chown=app:app /app/packages/constants ./packages/constants
+COPY --from=build --chown=app:app /app/packages/validation ./packages/validation
+COPY --from=build --chown=app:app /app/packages/integrations ./packages/integrations
+COPY --from=build --chown=app:app /app/packages/sdks/_info ./packages/sdks/_info
+COPY --from=build --chown=app:app /app/tooling/typescript ./tooling/typescript
 
 WORKDIR /app/apps/start
 
 EXPOSE 3000
+
+# Non-privileged user
+USER app
 
 # Start the Tanstack Start server
 CMD ["node", ".output/server/index.mjs"]

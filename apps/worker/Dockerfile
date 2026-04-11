@@ -20,11 +20,7 @@ RUN corepack enable && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Crear usuario no root y cambiar ownership
-RUN groupadd -r app && useradd -r app -g app
 WORKDIR /app
-RUN chown -R app:app /app
-USER app
 
 # Workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -73,34 +69,40 @@ RUN pnpm install --frozen-lockfile --prod && \
 # FINAL
 FROM base AS runner
 
+# Create non-privileged user
+RUN groupadd -r app && useradd -r -g app app
+
 WORKDIR /app
 
-COPY --from=build /app/package.json ./
-COPY --from=prod /app/node_modules ./node_modules
+COPY --from=build --chown=app:app /app/package.json ./
+COPY --from=prod --chown=app:app /app/node_modules ./node_modules
 
 # Apps
-COPY --from=build /app/apps/worker ./apps/worker
+COPY --from=build --chown=app:app /app/apps/worker ./apps/worker
 
 # Packages
-COPY --from=build /app/packages/db ./packages/db
-COPY --from=build /app/packages/geo ./packages/geo
-COPY --from=build /app/packages/json ./packages/json
-COPY --from=build /app/packages/email ./packages/email
-COPY --from=build /app/packages/redis ./packages/redis
-COPY --from=build /app/packages/queue ./packages/queue
-COPY --from=build /app/packages/logger ./packages/logger
-COPY --from=build /app/packages/common ./packages/common
-COPY --from=build /app/packages/importer ./packages/importer
-COPY --from=build /app/packages/payments ./packages/payments
-COPY --from=build /app/packages/constants ./packages/constants
-COPY --from=build /app/packages/validation ./packages/validation
-COPY --from=build /app/packages/integrations ./packages/integrations
-COPY --from=build /app/packages/js-runtime ./packages/js-runtime
-COPY --from=build /app/tooling/typescript ./tooling/typescript
+COPY --from=build --chown=app:app /app/packages/db ./packages/db
+COPY --from=build --chown=app:app /app/packages/geo ./packages/geo
+COPY --from=build --chown=app:app /app/packages/json ./packages/json
+COPY --from=build --chown=app:app /app/packages/email ./packages/email
+COPY --from=build --chown=app:app /app/packages/redis ./packages/redis
+COPY --from=build --chown=app:app /app/packages/queue ./packages/queue
+COPY --from=build --chown=app:app /app/packages/logger ./packages/logger
+COPY --from=build --chown=app:app /app/packages/common ./packages/common
+COPY --from=build --chown=app:app /app/packages/importer ./packages/importer
+COPY --from=build --chown=app:app /app/packages/payments ./packages/payments
+COPY --from=build --chown=app:app /app/packages/constants ./packages/constants
+COPY --from=build --chown=app:app /app/packages/validation ./packages/validation
+COPY --from=build --chown=app:app /app/packages/integrations ./packages/integrations
+COPY --from=build --chown=app:app /app/packages/js-runtime ./packages/js-runtime
+COPY --from=build --chown=app:app /app/tooling/typescript ./tooling/typescript
 RUN pnpm db:codegen
 
 WORKDIR /app/apps/worker
 
 #EXPOSE 3000
+
+# Non-privileged user
+USER app
 
 CMD ["node", "dist/index.js"]

@@ -20,11 +20,7 @@ ENV DATABASE_URL=$DATABASE_URL
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-# Crear usuario no root y cambiar ownership
-RUN groupadd -r app && useradd -r app -g app
 WORKDIR /app
-RUN chown -R app:app /app
-USER app
 
 # Workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -90,35 +86,41 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV npm_config_build_from_source=true
 
+# Create non-privileged user
+RUN groupadd -r app && useradd -r -g app app
+
 WORKDIR /app
 
-COPY --from=build /app/package.json ./
-COPY --from=prod /app/node_modules ./node_modules
+COPY --from=build --chown=app:app /app/package.json ./
+COPY --from=prod --chown=app:app /app/node_modules ./node_modules
 
 # Apps
-COPY --from=build /app/apps/api ./apps/api
+COPY --from=build --chown=app:app /app/apps/api ./apps/api
 
 # Packages
-COPY --from=build /app/packages/db ./packages/db
-COPY --from=build /app/packages/geo ./packages/geo
-COPY --from=build /app/packages/auth ./packages/auth
-COPY --from=build /app/packages/trpc ./packages/trpc
-COPY --from=build /app/packages/json ./packages/json
-COPY --from=build /app/packages/email ./packages/email
-COPY --from=build /app/packages/queue ./packages/queue
-COPY --from=build /app/packages/redis ./packages/redis
-COPY --from=build /app/packages/logger ./packages/logger
-COPY --from=build /app/packages/common ./packages/common
-COPY --from=build /app/packages/payments ./packages/payments
-COPY --from=build /app/packages/constants ./packages/constants
-COPY --from=build /app/packages/validation ./packages/validation
-COPY --from=build /app/packages/integrations ./packages/integrations
-COPY --from=build /app/packages/js-runtime ./packages/js-runtime
-COPY --from=build /app/tooling/typescript ./tooling/typescript
+COPY --from=build --chown=app:app /app/packages/db ./packages/db
+COPY --from=build --chown=app:app /app/packages/geo ./packages/geo
+COPY --from=build --chown=app:app /app/packages/auth ./packages/auth
+COPY --from=build --chown=app:app /app/packages/trpc ./packages/trpc
+COPY --from=build --chown=app:app /app/packages/json ./packages/json
+COPY --from=build --chown=app:app /app/packages/email ./packages/email
+COPY --from=build --chown=app:app /app/packages/queue ./packages/queue
+COPY --from=build --chown=app:app /app/packages/redis ./packages/redis
+COPY --from=build --chown=app:app /app/packages/logger ./packages/logger
+COPY --from=build --chown=app:app /app/packages/common ./packages/common
+COPY --from=build --chown=app:app /app/packages/payments ./packages/payments
+COPY --from=build --chown=app:app /app/packages/constants ./packages/constants
+COPY --from=build --chown=app:app /app/packages/validation ./packages/validation
+COPY --from=build --chown=app:app /app/packages/integrations ./packages/integrations
+COPY --from=build --chown=app:app /app/packages/js-runtime ./packages/js-runtime
+COPY --from=build --chown=app:app /app/tooling/typescript ./tooling/typescript
 RUN pnpm db:codegen
 
 WORKDIR /app/apps/api
 
 EXPOSE 3000
+
+# Non-privileged user
+USER app
 
 CMD ["node", "dist/index.js"]
