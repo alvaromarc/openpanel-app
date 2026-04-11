@@ -19,6 +19,11 @@ ENV SELF_HOSTED=1
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
+# Crear usuario no root y cambiar ownership
+RUN addgroup -S app && adduser -S app -G app
+RUN chown -R app:app /app
+USER app
+
 WORKDIR /app
 
 # Workspace - Copy package.json files for caching
